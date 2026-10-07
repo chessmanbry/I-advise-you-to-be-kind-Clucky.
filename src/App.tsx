@@ -112,165 +112,144 @@ export default function App() {
   // 1. Combo Master
   useEffect(() => {
     if (combo > 0) {
-      setAchievements((prev) =>
-        prev.map((a) => {
-          if (a.id === 'combo_master') {
-            const nextProgress = Math.max(a.currentProgress, combo);
-            if (nextProgress >= a.maxProgress && !a.unlocked) {
-              triggerUnlockAchievement('combo_master');
-            }
-            return { ...a, currentProgress: nextProgress };
-          }
-          return a;
-        })
-      );
+      setAchievements((prev) => {
+        const target = prev.find((a) => a.id === 'combo_master');
+        if (!target) return prev;
+        const nextProgress = Math.max(target.currentProgress, combo);
+        if (nextProgress === target.currentProgress && target.unlocked) return prev;
+        if (nextProgress >= target.maxProgress && !target.unlocked) {
+          triggerUnlockAchievement('combo_master');
+        }
+        return prev.map((a) => (a.id === 'combo_master' ? { ...a, currentProgress: nextProgress } : a));
+      });
     }
   }, [combo, triggerUnlockAchievement]);
 
   // 2. Treasury Guardian
   useEffect(() => {
-    setAchievements((prev) =>
-      prev.map((a) => {
-        if (a.id === 'treasury_guardian') {
-          const nextProgress = Math.max(a.currentProgress, funds);
-          if (nextProgress >= a.maxProgress && !a.unlocked) {
-            triggerUnlockAchievement('treasury_guardian');
-          }
-          return { ...a, currentProgress: nextProgress };
-        }
-        return a;
-      })
-    );
+    setAchievements((prev) => {
+      const target = prev.find((a) => a.id === 'treasury_guardian');
+      if (!target) return prev;
+      const nextProgress = Math.max(target.currentProgress, funds);
+      if (nextProgress === target.currentProgress && target.unlocked) return prev;
+      if (nextProgress >= target.maxProgress && !target.unlocked) {
+        triggerUnlockAchievement('treasury_guardian');
+      }
+      return prev.map((a) => (a.id === 'treasury_guardian' ? { ...a, currentProgress: nextProgress } : a));
+    });
   }, [funds, triggerUnlockAchievement]);
 
   // 3. Virtue Evangelist
   useEffect(() => {
-    setAchievements((prev) =>
-      prev.map((a) => {
-        if (a.id === 'virtue_evangelist') {
-          const nextProgress = Math.max(a.currentProgress, purifiedCount);
-          if (nextProgress >= a.maxProgress && !a.unlocked) {
-            triggerUnlockAchievement('virtue_evangelist');
-          }
-          return { ...a, currentProgress: nextProgress };
-        }
-        return a;
-      })
-    );
+    setAchievements((prev) => {
+      const target = prev.find((a) => a.id === 'virtue_evangelist');
+      if (!target) return prev;
+      const nextProgress = Math.max(target.currentProgress, purifiedCount);
+      if (nextProgress === target.currentProgress && target.unlocked) return prev;
+      if (nextProgress >= target.maxProgress && !target.unlocked) {
+        triggerUnlockAchievement('virtue_evangelist');
+      }
+      return prev.map((a) => (a.id === 'virtue_evangelist' ? { ...a, currentProgress: nextProgress } : a));
+    });
   }, [purifiedCount, triggerUnlockAchievement]);
 
   // 4. Decalogue Master
   useEffect(() => {
     const unlockedRulesCount = rules.filter((r) => r.unlocked).length;
-    setAchievements((prev) =>
-      prev.map((a) => {
-        if (a.id === 'decalogue_master') {
-          const nextProgress = unlockedRulesCount;
-          if (nextProgress >= a.maxProgress && !a.unlocked) {
-            triggerUnlockAchievement('decalogue_master');
-          }
-          return { ...a, currentProgress: nextProgress };
-        }
-        return a;
-      })
-    );
+    setAchievements((prev) => {
+      const target = prev.find((a) => a.id === 'decalogue_master');
+      if (!target) return prev;
+      const nextProgress = unlockedRulesCount;
+      if (nextProgress === target.currentProgress && target.unlocked) return prev;
+      if (nextProgress >= target.maxProgress && !target.unlocked) {
+        triggerUnlockAchievement('decalogue_master');
+      }
+      return prev.map((a) => (a.id === 'decalogue_master' ? { ...a, currentProgress: nextProgress } : a));
+    });
   }, [rules, triggerUnlockAchievement]);
 
   // Handle fine-grained stats events from GameCanvas
   const handleCanvasStatsEvent = useCallback(
     (event: GameCanvasStatsEvent) => {
-      // 1. Laser tick & Accuracy calculation
+      // Throttled Laser accuracy update
+      if (event.type === 'laser_accuracy' && event.accuracy !== undefined) {
+        const accuracyPct = event.accuracy;
+        setAchievements((prev) => {
+          const target = prev.find((a) => a.id === 'accuracy_100');
+          if (!target || (target.currentProgress >= accuracyPct && target.unlocked)) return prev;
+          const nextProg = Math.max(target.currentProgress, accuracyPct);
+          if (nextProg === target.currentProgress && target.unlocked) return prev;
+          if (nextProg >= target.maxProgress && !target.unlocked) {
+            triggerUnlockAchievement('accuracy_100');
+          }
+          return prev.map((a) => (a.id === 'accuracy_100' ? { ...a, currentProgress: nextProg } : a));
+        });
+      }
+
+      // Throttled Pacifist second update
+      if (event.type === 'pacifist_sec' && event.sec !== undefined) {
+        const currentSec = event.sec;
+        setAchievements((prev) => {
+          const target = prev.find((a) => a.id === 'pacifist_monk');
+          if (!target || (target.currentProgress >= currentSec && target.unlocked)) return prev;
+          const nextProg = Math.max(target.currentProgress, currentSec);
+          if (nextProg === target.currentProgress && target.unlocked) return prev;
+          if (nextProg >= target.maxProgress && !target.unlocked) {
+            triggerUnlockAchievement('pacifist_monk');
+          }
+          return prev.map((a) => (a.id === 'pacifist_monk' ? { ...a, currentProgress: nextProg } : a));
+        });
+      }
+
+      // Legacy Laser tick support (safeguarded)
       if (event.type === 'laser_tick') {
         laserFiredTicksRef.current++;
         if (event.hit) {
           laserHitTicksRef.current++;
         }
-        // If fired regular laser, reset pacifist streak
         pacifistSecRef.current = 0;
-
-        // If at least 3 seconds of continuous laser fired (approx 150-180 ticks)
-        if (laserFiredTicksRef.current >= 150) {
-          const accuracyPct = Math.round((laserHitTicksRef.current / laserFiredTicksRef.current) * 100);
-          setAchievements((prev) =>
-            prev.map((a) => {
-              if (a.id === 'accuracy_100') {
-                const nextProg = Math.max(a.currentProgress, accuracyPct);
-                if (nextProg >= a.maxProgress && !a.unlocked) {
-                  triggerUnlockAchievement('accuracy_100');
-                }
-                return { ...a, currentProgress: nextProg };
-              }
-              return a;
-            })
-          );
-        }
       }
 
-      // 2. Pacifist Monk: not firing regular laser
+      // Legacy Pacifist tick support (safeguarded)
       if (event.type === 'pacifist_tick' && event.dtSec) {
         pacifistSecRef.current += event.dtSec;
-        const currentSec = Math.floor(pacifistSecRef.current);
-        setAchievements((prev) =>
-          prev.map((a) => {
-            if (a.id === 'pacifist_monk') {
-              const nextProg = Math.max(a.currentProgress, currentSec);
-              if (nextProg >= a.maxProgress && !a.unlocked) {
-                triggerUnlockAchievement('pacifist_monk');
-              }
-              return { ...a, currentProgress: nextProg };
-            }
-            return a;
-          })
-        );
       }
 
       // 3. Ult used
       if (event.type === 'ult_used') {
         ultUsedCountRef.current++;
         const currentCount = ultUsedCountRef.current;
-        setAchievements((prev) =>
-          prev.map((a) => {
-            if (a.id === 'overload_crow') {
-              const nextProg = Math.max(a.currentProgress, currentCount);
-              if (nextProg >= a.maxProgress && !a.unlocked) {
-                triggerUnlockAchievement('overload_crow');
-              }
-              return { ...a, currentProgress: nextProg };
-            }
-            return a;
-          })
-        );
+        setAchievements((prev) => {
+          const target = prev.find((a) => a.id === 'overload_crow');
+          if (!target) return prev;
+          const nextProg = Math.max(target.currentProgress, currentCount);
+          if (nextProg === target.currentProgress && target.unlocked) return prev;
+          if (nextProg >= target.maxProgress && !target.unlocked) {
+            triggerUnlockAchievement('overload_crow');
+          }
+          return prev.map((a) => (a.id === 'overload_crow' ? { ...a, currentProgress: nextProg } : a));
+        });
       }
 
       // 4. Boss purified
       if (event.type === 'boss_purified') {
-        setAchievements((prev) =>
-          prev.map((a) => {
-            if (a.id === 'boss_reformer') {
-              if (!a.unlocked) {
-                triggerUnlockAchievement('boss_reformer');
-              }
-              return { ...a, currentProgress: 1 };
-            }
-            return a;
-          })
-        );
+        setAchievements((prev) => {
+          const target = prev.find((a) => a.id === 'boss_reformer');
+          if (!target || target.unlocked) return prev;
+          triggerUnlockAchievement('boss_reformer');
+          return prev.map((a) => (a.id === 'boss_reformer' ? { ...a, unlocked: true, currentProgress: 1 } : a));
+        });
       }
 
       // 5. Untouchable wave clear (health == 100)
       if (event.type === 'wave_clear_health' && event.health !== undefined) {
         if (event.health >= 100) {
-          setAchievements((prev) =>
-            prev.map((a) => {
-              if (a.id === 'untouchable_virtue') {
-                if (!a.unlocked) {
-                  triggerUnlockAchievement('untouchable_virtue');
-                }
-                return { ...a, currentProgress: 1 };
-              }
-              return a;
-            })
-          );
+          setAchievements((prev) => {
+            const target = prev.find((a) => a.id === 'untouchable_virtue');
+            if (!target || target.unlocked) return prev;
+            triggerUnlockAchievement('untouchable_virtue');
+            return prev.map((a) => (a.id === 'untouchable_virtue' ? { ...a, unlocked: true, currentProgress: 1 } : a));
+          });
         }
       }
     },

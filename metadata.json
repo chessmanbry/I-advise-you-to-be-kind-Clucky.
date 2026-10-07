@@ -2,6 +2,6 @@
   "name": "勸你善良咕咕雞 (Be Virtuous Zanna)",
   "description": "正義咕咕雞 Zanna 對抗貪婪金融科技社員的歡樂爽快射擊遊戲，噴射正義雷射光感化社員、重振社團規則！",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }
 

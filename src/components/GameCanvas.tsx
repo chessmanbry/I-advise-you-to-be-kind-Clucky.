@@ -5,10 +5,12 @@ import { ENEMY_TEMPLATES } from '../data/rules';
 import { sound } from '../utils/audio';
 
 export interface GameCanvasStatsEvent {
-  type: 'laser_tick' | 'pacifist_tick' | 'boss_purified' | 'ult_used' | 'wave_clear_health';
+  type: 'laser_tick' | 'pacifist_tick' | 'boss_purified' | 'ult_used' | 'wave_clear_health' | 'laser_accuracy' | 'pacifist_sec';
   hit?: boolean;
   dtSec?: number;
   health?: number;
+  accuracy?: number;
+  sec?: number;
 }
 
 interface BgFlyingChick {
@@ -94,6 +96,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isFiringInternalRef = useRef<boolean>(false);
+  const upgradesRef = useRef<UpgradeState>(upgrades);
+
+  useEffect(() => {
+    upgradesRef.current = upgrades;
+  }, [upgrades]);
 
   // References for game state inside requestAnimationFrame loop
   const gameStateRef = useRef({
@@ -120,6 +127,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     nextFlockDelay: 3500,
     symbolSpawnTimer: 0,
     ambientCluckTimer: 0,
+    laserFiredTicks: 0,
+    laserHitTicks: 0,
+    pacifistSec: 0,
+    lastReportedPacifistSec: 0,
+    lastReportedAccuracy: 0,
   });
 
   // Sync health & rage to ref
@@ -187,7 +199,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         });
 
         // Drop funds
-        const earned = Math.floor(enemy.fundDrop * (1 + (upgrades.fundMultiplier - 1) * 0.4));
+        const currentUpgrades = upgradesRef.current;
+        const earned = Math.floor(enemy.fundDrop * (1 + (currentUpgrades.fundMultiplier - 1) * 0.4));
         setFunds((prev) => prev + earned);
 
         // Unlock rule
@@ -231,7 +244,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       maxLife: 100,
       fontSize: 22,
     });
-  }, [setRage, setFunds, setPurifiedCount, setCombo, setMaxCombo, setRules, upgrades.fundMultiplier]);
+  }, [setRage, setFunds, setPurifiedCount, setCombo, setMaxCombo, setRules]);
 
   // Ult signal from outside
   useEffect(() => {
@@ -300,13 +313,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     let animId: number;
 
+    let dpr = 1;
+    let cssWidth = 800;
+    let cssHeight = 600;
+
     const resizeCanvas = () => {
       const container = canvas.parentElement;
       if (container) {
-        const width = container.clientWidth;
-        const height = Math.max(480, Math.min(650, window.innerHeight - 200));
-        canvas.width = width;
-        canvas.height = height;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        cssWidth = container.clientWidth || 800;
+        cssHeight = Math.max(480, Math.min(650, window.innerHeight - 200));
+        canvas.width = Math.floor(cssWidth * dpr);
+        canvas.height = Math.floor(cssHeight * dpr);
+        canvas.style.width = `${cssWidth}px`;
+        canvas.style.height = `${cssHeight}px`;
       }
     };
 
@@ -319,6 +339,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       let clientX = 0;
       let clientY = 0;
       if ('touches' in e && e.touches.length > 0) {
+        if (e.cancelable) e.preventDefault();
         clientX = e.touches[0].clientX;
         clientY = e.touches[0].clientY;
       } else if ('clientX' in e) {
@@ -332,6 +353,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
 
     const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if ('touches' in e && e.cancelable) {
+        e.preventDefault();
+      }
       isFiringInternalRef.current = true;
       setIsFiring(true);
       sound.startLaser();
@@ -349,8 +373,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     canvas.addEventListener('mousedown', handlePointerDown);
     window.addEventListener('mouseup', handlePointerUp);
 
-    canvas.addEventListener('touchmove', handlePointerMove, { passive: true });
-    canvas.addEventListener('touchstart', handlePointerDown, { passive: true });
+    canvas.addEventListener('touchmove', handlePointerMove, { passive: false });
+    canvas.addEventListener('touchstart', handlePointerDown, { passive: false });
     window.addEventListener('touchend', handlePointerUp);
 
     // Context menu prevent default
@@ -434,8 +458,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const dt = Math.min(32, timestamp - state.lastTime);
       state.lastTime = timestamp;
 
-      const w = canvas.width;
-      const h = canvas.height;
+      const w = cssWidth;
+      const h = cssHeight;
       const cx = w / 2;
       const cy = h / 2;
 
@@ -474,8 +498,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       }
 
-      // Clear Canvas with subtle screen shake offset
+      // Clear Canvas with subtle screen shake offset and DPR transform
       ctx.save();
+      ctx.scale(dpr, dpr);
       if (state.screenShake > 0) {
         const shakeX = (Math.random() - 0.5) * state.screenShake;
         const shakeY = (Math.random() - 0.5) * state.screenShake;
@@ -715,7 +740,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // 2. Reverence Aura Field around Zanna
-      const auraRadius = 110 + upgrades.reverenceAura * 20;
+      const currentUpgrades = upgradesRef.current;
+      const auraRadius = 110 + currentUpgrades.reverenceAura * 20;
       const auraGrad = ctx.createRadialGradient(cx, cy, 30, cx, cy, auraRadius);
       auraGrad.addColorStop(0, 'rgba(56, 189, 248, 0.15)');
       auraGrad.addColorStop(0.7, 'rgba(245, 158, 11, 0.08)');
@@ -753,8 +779,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       // 4. Update & Render Enemies
-      const laserWidth = 14 + upgrades.laserWidth * 6;
-      const laserDPS = (80 + upgrades.laserPower * 30) * (dt / 1000);
+      const laserWidth = 14 + currentUpgrades.laserWidth * 6;
+      const laserDPS = (80 + currentUpgrades.laserPower * 30) * (dt / 1000);
       const beamLength = 1200;
 
       // Laser vector
@@ -845,7 +871,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         // Reverence Aura slowdown
         if (distToCenter < auraRadius) {
-          speedMult = Math.max(0.2, 1 - upgrades.reverenceAura * 0.15);
+          speedMult = Math.max(0.2, 1 - currentUpgrades.reverenceAura * 0.15);
         }
 
         const moveAngle = Math.atan2(cy - enemy.y, cx - enemy.x);
@@ -905,7 +931,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
               // Generate Ult Rage
               setRage((prev) => {
-                const add = (0.2 + (upgrades.rageGeneration - 1) * 0.1) * (dt / 16);
+                const add = (0.2 + (currentUpgrades.rageGeneration - 1) * 0.1) * (dt / 16);
                 return Math.min(100, prev + add);
               });
 
@@ -951,7 +977,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 });
 
                 // Drop recovered funds
-                const earned = Math.floor(enemy.fundDrop * (1 + (upgrades.fundMultiplier - 1) * 0.4));
+                const earned = Math.floor(enemy.fundDrop * (1 + (currentUpgrades.fundMultiplier - 1) * 0.4));
                 setFunds((prev) => prev + earned);
                 state.floatingTexts.push({
                   id: Math.random().toString(),
@@ -1090,9 +1116,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       if (isFiringInternalRef.current) {
-        onStatsEvent?.({ type: 'laser_tick', hit: anyEnemyHitByLaser });
+        state.laserFiredTicks++;
+        if (anyEnemyHitByLaser) {
+          state.laserHitTicks++;
+        }
+        state.pacifistSec = 0;
+
+        // Throttled stats notification (every 30 ticks ~ 500ms)
+        if (state.laserFiredTicks >= 150 && state.laserFiredTicks % 30 === 0) {
+          const accuracyPct = Math.round((state.laserHitTicks / state.laserFiredTicks) * 100);
+          if (accuracyPct !== state.lastReportedAccuracy) {
+            state.lastReportedAccuracy = accuracyPct;
+            onStatsEvent?.({ type: 'laser_accuracy', accuracy: accuracyPct });
+          }
+        }
       } else {
-        onStatsEvent?.({ type: 'pacifist_tick', dtSec: dt / 1000 });
+        state.pacifistSec += dt / 1000;
+        const currentSec = Math.floor(state.pacifistSec);
+        if (currentSec !== state.lastReportedPacifistSec && currentSec <= 15) {
+          state.lastReportedPacifistSec = currentSec;
+          onStatsEvent?.({ type: 'pacifist_sec', sec: currentSec });
+        }
       }
 
       // 5. Draw Righteous Dual-Core Laser Beam (if firing)
@@ -1323,6 +1367,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         isFiringInternalRef.current = false;
         setIsFiring(false);
 
+        // Unlock next rule for wave completion (Wave 1->Rule 6, Wave 2->Rule 7, etc.)
+        const waveUnlockRuleId = 5 + wave;
+        if (waveUnlockRuleId <= 10) {
+          setRules((prevRules) =>
+            prevRules.map((r) => {
+              if (r.id === waveUnlockRuleId && !r.unlocked) {
+                return { ...r, unlocked: true };
+              }
+              return r;
+            })
+          );
+        }
+
         sound.playRuleUnlockFanfare();
         confetti({ particleCount: 75, spread: 75, origin: { y: 0.55 } });
 
@@ -1367,7 +1424,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   }, [
     wave,
     maxWave,
-    upgrades,
     setHealth,
     setFunds,
     setRage,

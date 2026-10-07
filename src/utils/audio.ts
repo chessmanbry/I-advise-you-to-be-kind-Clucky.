@@ -11,14 +11,34 @@ class SoundController {
   private bgmStep: number = 0;
   private laserOsc: OscillatorNode | null = null;
   private laserGain: GainNode | null = null;
+  private laserLfo: OscillatorNode | null = null;
+  private laserLfoGain: GainNode | null = null;
+
+  constructor() {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          if (this.ctx && this.ctx.state === 'running') {
+            this.ctx.suspend().catch(() => {});
+          }
+        } else {
+          if (this.ctx && this.ctx.state === 'suspended' && !this.isMuted) {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+      });
+    }
+  }
 
   private initCtx() {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new AudioCtx();
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
     }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
     }
   }
 
@@ -160,6 +180,8 @@ class SoundController {
     lfoGain.gain.value = 80;
     lfo.connect(this.laserOsc.frequency);
     lfo.start(t);
+    this.laserLfo = lfo;
+    this.laserLfoGain = lfoGain;
 
     this.laserGain.gain.setValueAtTime(0.01, t);
     this.laserGain.gain.linearRampToValueAtTime(0.08, t + 0.05);
@@ -182,6 +204,11 @@ class SoundController {
       this.laserGain.gain.linearRampToValueAtTime(0.001, t + 0.05);
       setTimeout(() => {
         try {
+          this.laserLfo?.stop();
+          this.laserLfo?.disconnect();
+          this.laserLfo = null;
+          this.laserLfoGain = null;
+
           this.laserOsc?.stop();
           this.laserOsc?.disconnect();
           this.laserOsc = null;
